@@ -17,63 +17,84 @@ ORDER BY 3, 4;
 
 
 
--- Query to select specific columns from the CovidDeaths table, ordered by location and date
+-- Retrieve specific columns from the CovidDeaths table and order them by location and date
+
 SELECT location, date, total_cases, new_cases, total_deaths, population
 FROM Covid_data_insights..CovidDeaths$
-ORDER BY 1, 2;
+ORDER BY location, date;
 
--- Query to calculate the likelihood of dying if contracting COVID-19 in Canada
-SELECT location, date, total_cases, total_deaths, (CONVERT(float, total_deaths) / NULLIF(CONVERT(float, total_cases), 0)) * 100 AS DeathPercentage
+
+-- Calculate the likelihood of dying if contracting COVID-19 in a specific country
+
+SELECT location, date, total_cases, total_deaths, 
+       (CONVERT(float, total_deaths) / NULLIF(CONVERT(float, total_cases), 0)) * 100 AS DeathRatePercentage
 FROM Covid_data_insights..CovidDeaths$
 WHERE location LIKE '%canada%'
-ORDER BY 1, 2;
+ORDER BY location, date;
 
--- Query to compare total cases to population in Canada
-SELECT location, date, population, total_cases, (total_cases / population) * 100 AS CasesVsPopulationPercentage
+
+-- Calculate total cases as a percentage of the population for a specific country
+
+SELECT location, date, population, total_cases, 
+       (total_cases / population) * 100 AS CasesPopulationPercentage
 FROM Covid_data_insights..CovidDeaths$
 WHERE location LIKE '%canada%'
-ORDER BY 1, 2;
+ORDER BY location, date;
 
--- Query to find countries with the highest infection rates compared to population
-SELECT location, population, MAX(total_cases), MAX((total_cases / population)) * 100 AS PercentPopulationInfected
+
+-- Determine countries with the highest infection rates compared to their populations
+
+SELECT location, population, MAX(total_cases), 
+       MAX((total_cases / population)) * 100 AS PercentPopulationInfected
 FROM Covid_data_insights..CovidDeaths$
 GROUP BY location, population
 ORDER BY PercentPopulationInfected DESC;
 
--- Query to find countries with the highest death counts per population
-SELECT location, MAX(CAST(total_deaths AS int)) AS PercentPopulationInfected
+
+-- Identify countries with the highest death counts per population
+
+SELECT location, MAX(CAST(total_deaths AS INT)) AS DeathsPopulationPercentage
 FROM Covid_data_insights..CovidDeaths$
 WHERE continent IS NOT NULL
 GROUP BY location
-ORDER BY PercentPopulationInfected DESC;
+ORDER BY DeathsPopulationPercentage DESC;
 
--- Query to analyze death counts by continent
-SELECT continent, MAX(CAST(total_deaths AS int)) AS PercentPopulationInfected
+
+-- Analyze continents with the highest death counts
+
+SELECT continent, MAX(CAST(total_deaths AS INT)) AS DeathsPopulationPercentage
 FROM Covid_data_insights..CovidDeaths$
 WHERE continent IS NOT NULL
 GROUP BY continent
-ORDER BY PercentPopulationInfected DESC;
+ORDER BY DeathsPopulationPercentage DESC;
 
--- Query to calculate death percentage by day
-SELECT date, SUM(new_CASES), SUM(CAST(new_deaths AS INT)), SUM(CAST(new_deaths AS INT))/NULLIF(SUM(NEW_CASES)* 100,0) AS DeathPercentage
+
+-- Calculate death percentage by day
+
+SELECT date, SUM(new_cases) AS TotalCases, SUM(CAST(new_deaths AS INT)) AS TotalDeaths, 
+       SUM(CAST(new_deaths AS INT)) / NULLIF(SUM(new_cases), 0) * 100 AS DeathPercentage
 FROM Covid_data_insights..CovidDeaths$
 WHERE continent IS NOT NULL
 AND new_cases != 0
 AND new_deaths != 0
 GROUP BY date
-ORDER BY 1, 2;
+ORDER BY date;
 
--- Query to join the CovidVaccinations and CovidDeaths tables
+
+-- Join the CovidVaccinations and CovidDeaths tables
+
 SELECT *
 FROM Covid_data_insights..CovidVaccinations$ vac
 JOIN Covid_data_insights..CovidDeaths$ dea
 ON vac.location = dea.location
 AND vac.date = dea.date;
 
--- Query to analyze total population vs vaccination
-WITH PopvsVac (Continent, Location, Date, Population, new_vaccinations, RollingPeopleVaccinated) AS (
+
+-- Calculate total population vs vaccination
+
+WITH PopvsVac AS (
     SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
-        SUM(CONVERT(BIGINT, vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+           SUM(CONVERT(BIGINT, vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
     FROM Covid_data_insights..CovidVaccinations$ vac
     JOIN Covid_data_insights..CovidDeaths$ dea
     ON vac.location = dea.location
@@ -83,14 +104,18 @@ WITH PopvsVac (Continent, Location, Date, Population, new_vaccinations, RollingP
 SELECT *, (RollingPeopleVaccinated / Population) * 100 AS VaccinationPercentage
 FROM PopvsVac;
 
--- Query to create a view for later use
+
+-- Create a view to store data for later use
+
 DROP VIEW IF EXISTS PercentPopulationVaccinated;
 CREATE VIEW PercentPopulationVaccinated AS
 SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
-    SUM(CONVERT(BIGINT, vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
+       SUM(CONVERT(BIGINT, vac.new_vaccinations)) OVER (PARTITION BY dea.location ORDER BY dea.location, dea.date) AS RollingPeopleVaccinated
 FROM Covid_data_insights..CovidVaccinations$ vac
 JOIN Covid_data_insights..CovidDeaths$ dea
 ON vac.location = dea.location
 AND vac.date = dea.date
 WHERE dea.continent IS NOT NULL;
+
+
 
